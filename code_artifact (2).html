@@ -1,0 +1,1942 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>무지의 베일 시뮬레이터 (Veil of Ignorance)</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Font Awesome & Google Fonts -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- QR Code & MQTT WebSocket Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.5.0/mqtt.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans KR"', 'Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              800: '#3730a3',
+              900: '#312e81',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #f8fafc;
+      color: #0f172a;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .custom-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 8px;
+      border-radius: 9999px;
+      background: #e2e8f0;
+      outline: none;
+    }
+    .custom-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #4f46e5;
+      cursor: pointer;
+      box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.35);
+      border: 2px solid #ffffff;
+      transition: transform 0.15s ease;
+    }
+    .custom-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.05); opacity: 0.4; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .pulse-ring {
+      animation: pulse-ring 3s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-indigo-100 selection:text-indigo-900">
+
+  <!-- Navigation Header Bar -->
+  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-2.5 cursor-pointer" id="header-logo-btn">
+        <div class="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
+          <i class="fa-solid fa-scale-balanced text-lg"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-black tracking-tight text-slate-900 flex items-center gap-1.5">
+            무지의 베일 시뮬레이터
+          </h1>
+          <p class="text-[11px] font-semibold text-slate-400">존 롤스 정의론 체험 플랫폼</p>
+        </div>
+      </div>
+
+      <!-- Header Controls: Role Badge & Exit Button -->
+      <div id="header-user-controls" class="flex items-center gap-3 hidden">
+        <div class="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 text-xs font-semibold">
+          <span id="role-badge" class="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold">학생</span>
+          <span id="room-code-badge" class="text-slate-600">방: ----</span>
+          <span id="network-status-badge" class="inline-block w-2 h-2 rounded-full bg-emerald-500" title="실시간 네트워크 연결됨"></span>
+        </div>
+        <button id="btn-return-lobby" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition flex items-center gap-1">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i>
+          <span class="hidden sm:inline">로비로</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Body Content -->
+  <main class="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 md:p-8">
+
+    <!-- 0. ENTRY LOBBY SCREEN -->
+    <section id="screen-lobby" class="py-6 max-w-2xl mx-auto text-center space-y-8">
+      <div class="space-y-3">
+        <h2 class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">
+          당신이 누구로 태어날지 모른다면,<br/>
+          <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">어떤 세상을 만드시겠습니까?</span>
+        </h2>
+        <p class="text-sm sm:text-base text-slate-600 max-w-lg mx-auto leading-relaxed">
+          존 롤스(John Rawls)의 사고실험 '무지의 베일' 속에서 사회 기본 제도를 설계하고, 자신이 사회의 다양한 위치로 태어났을 때의 삶을 시뮬레이션해 보세요.
+        </p>
+      </div>
+
+      <!-- Action Cards: Teacher vs Student -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto pt-2">
+        <!-- Teacher Entry Card -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition text-left flex flex-col justify-between space-y-4">
+          <div class="space-y-2">
+            <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl font-bold">
+              <i class="fa-solid fa-chalkboard-user"></i>
+            </div>
+            <h3 class="font-black text-lg text-slate-900">교사로 입장하기</h3>
+            <p class="text-xs text-slate-500 leading-relaxed">
+              새로운 시뮬레이터 수업 방을 개설하고 4자리 참여 코드와 QR 코드를 발급받아 학생들의 진행을 모니터링합니다.
+            </p>
+          </div>
+          <button id="btn-enter-teacher" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-2xl font-bold text-sm shadow-md shadow-indigo-100 transition flex items-center justify-center gap-2">
+            <span>수업 방 만들기</span>
+            <i class="fa-solid fa-arrow-right text-xs"></i>
+          </button>
+        </div>
+
+        <!-- Student Entry Card -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition text-left flex flex-col justify-between space-y-4">
+          <div class="space-y-2">
+            <div class="w-12 h-12 rounded-2xl bg-violet-50 text-violet-600 flex items-center justify-center text-xl font-bold">
+              <i class="fa-solid fa-graduation-cap"></i>
+            </div>
+            <h3 class="font-black text-lg text-slate-900">학생으로 참여하기</h3>
+            <p class="text-xs text-slate-500 leading-relaxed">
+              선생님께 받은 4자리 수업 코드를 입력하고, 학번(5자리)과 이름을 작성하여 수업에 실시간으로 접속합니다.
+            </p>
+          </div>
+          <button id="btn-enter-student" class="w-full py-3 px-4 bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white rounded-2xl font-bold text-sm shadow-md shadow-violet-100 transition flex items-center justify-center gap-2">
+            <span>수업 참여하기</span>
+            <i class="fa-solid fa-arrow-right text-xs"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 1. TEACHER DASHBOARD SCREEN -->
+    <section id="screen-teacher" class="hidden space-y-6">
+      <!-- Teacher Header Box with QR and Copy buttons -->
+      <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <span class="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold inline-block mb-1">
+            교사 관제 대시보드
+          </span>
+          <h2 class="text-2xl font-black text-slate-900">실시간 수업 진행 현황</h2>
+          <p class="text-xs text-slate-500 mt-1">학생들의 무지의 베일 설계, 역할 추첨, 재설계 및 성찰을 실시간으로 확인합니다.</p>
+        </div>
+
+        <div class="flex items-center gap-3 bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-100 self-stretch sm:self-auto justify-between sm:justify-start">
+          <div>
+            <div class="text-[10px] font-bold text-indigo-500 uppercase">수업 참여 코드 (4자리)</div>
+            <div id="teacher-dashboard-room-code" class="text-2xl font-black tracking-widest text-indigo-900">----</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btn-copy-code-teacher" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+              <i class="fa-regular fa-copy"></i>
+              <span>코드 복사</span>
+            </button>
+            <button id="btn-open-qr-teacher" class="px-3.5 py-2 bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-qrcode text-sm"></i>
+              <span>QR 코드</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Counters -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 text-center">
+          <div class="text-xs text-slate-400 font-bold">총 접속 학생</div>
+          <div id="metric-total-students" class="text-2xl font-black text-slate-900 mt-1">0</div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 text-center">
+          <div class="text-xs text-slate-400 font-bold">1단계 (1차설계)</div>
+          <div id="metric-step1-count" class="text-2xl font-black text-indigo-600 mt-1">0</div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 text-center">
+          <div class="text-xs text-slate-400 font-bold">2단계 (역할추첨)</div>
+          <div id="metric-step2-count" class="text-2xl font-black text-purple-600 mt-1">0</div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 text-center">
+          <div class="text-xs text-slate-400 font-bold">3단계 (영향분석)</div>
+          <div id="metric-step3-count" class="text-2xl font-black text-blue-600 mt-1">0</div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 text-center">
+          <div class="text-xs text-slate-400 font-bold">4단계 (2차재설계)</div>
+          <div id="metric-step4-count" class="text-2xl font-black text-amber-600 mt-1">0</div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 text-center">
+          <div class="text-xs text-slate-400 font-bold">5단계 (성찰완료)</div>
+          <div id="metric-step5-count" class="text-2xl font-black text-emerald-600 mt-1">0</div>
+        </div>
+      </div>
+
+      <!-- Students Grid Area -->
+      <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
+            <span>실시간 학생 참여 명단</span>
+            <span id="student-count-badge" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">0명</span>
+          </h3>
+          <span class="text-xs text-slate-400">카드를 클릭하면 학생의 상세 정책과 성찰을 확인합니다.</span>
+        </div>
+
+        <div id="teacher-students-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- Populated dynamically -->
+        </div>
+
+        <div id="teacher-empty-state" class="py-12 text-center text-slate-400 space-y-2">
+          <i class="fa-solid fa-users-viewfinder text-3xl text-slate-300"></i>
+          <p class="text-sm font-semibold">아직 입장한 학생이 없습니다.</p>
+          <p class="text-xs">학생들에게 위의 4자리 코드 또는 [QR 코드]를 안내해 주세요.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. STUDENT SIMULATION SCREEN -->
+    <section id="screen-student" class="hidden space-y-6">
+      
+      <!-- Student Progress Bar -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs" id="student-step-badge">
+            1
+          </div>
+          <div>
+            <div class="text-xs font-bold text-slate-900" id="student-step-title">1단계: 무지의 베일 속 사회 제도 설계</div>
+            <div class="text-[11px] text-slate-400" id="student-profile-label">학생: 10101 홍길동</div>
+          </div>
+        </div>
+        <div class="text-xs font-bold text-indigo-600" id="student-step-indicator">
+          Step 1 / 5
+        </div>
+      </div>
+
+      <!-- STEP 1: VEIL OF IGNORANCE DESIGN (5-LEVEL SCALE) -->
+      <div id="screen-step1" class="space-y-6">
+        <div class="bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl space-y-4">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-indigo-200 text-xs font-semibold backdrop-blur-md">
+            <i class="fa-solid fa-eye-slash"></i>
+            <span>원초적 입장 (Original Position)</span>
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">
+            당신은 지금 '무지의 베일'을 쓰고 있습니다.
+          </h2>
+          <p class="text-xs sm:text-sm text-indigo-100/90 leading-relaxed max-w-2xl">
+            자신의 성별, 건강 상태, 타고난 재능, 부모의 재력, 사회적 지위를 전혀 알 수 없습니다.<br/>
+            어떤 불리한 위치에서 태어나더라도 인간다운 삶을 살 수 있는 <strong>가장 공정한 사회 규칙</strong>을 5단계 척도로 결정하세요.
+          </p>
+        </div>
+
+        <!-- 4 Major Policies Formulation with 5 Levels -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-8">
+          <h3 class="font-black text-slate-900 text-lg border-b border-slate-100 pb-3 flex items-center justify-between">
+            <span>4대 기본 정책 결정 (1~5단계 세부 척도)</span>
+            <span class="text-xs font-semibold text-slate-400">자유방임 ↔ 급진평등</span>
+          </h3>
+
+          <!-- Policy 1: Tax & Redistribution -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <span class="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs">1</span>
+                <span>조세 및 소득 재분배 정책</span>
+              </label>
+              <span id="label-tax" class="text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">[3] 중부담·중복지 (균형 복지)</span>
+            </div>
+            <input id="input-tax" type="range" min="1" max="5" value="3" class="w-full custom-slider">
+            <div class="flex justify-between text-[10px] text-slate-400 font-semibold px-1">
+              <span>[1] 자유방임</span>
+              <span>[2] 선별복지</span>
+              <span>[3] 균형복지</span>
+              <span>[4] 보편수당</span>
+              <span>[5] 급진평등</span>
+            </div>
+            <p id="desc-tax" class="text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-100 leading-relaxed">
+              OECD 평균 수준 누진세율(30~40%)을 부과하고, 취약계층 생계급여 및 사회보험을 안정적으로 운영합니다.
+            </p>
+          </div>
+
+          <!-- Policy 2: Healthcare -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <span class="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs">2</span>
+                <span>의료 보장 체계</span>
+              </label>
+              <span id="label-health" class="text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">[3] 국민건강보험 (기본형)</span>
+            </div>
+            <input id="input-health" type="range" min="1" max="5" value="3" class="w-full custom-slider">
+            <div class="flex justify-between text-[10px] text-slate-400 font-semibold px-1">
+              <span>[1] 전면민간</span>
+              <span>[2] 극빈층만</span>
+              <span>[3] 표준건보</span>
+              <span>[4] 비급여포함</span>
+              <span>[5] 전면무상</span>
+            </div>
+            <p id="desc-health" class="text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-100 leading-relaxed">
+              국민의무 건강보험 체계로 일상 진료비 70%를 지원하며, 고가 비급여 치료는 자부담 또는 민간실손보험으로 해결합니다.
+            </p>
+          </div>
+
+          <!-- Policy 3: Education -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <span class="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs">3</span>
+                <span>교육 및 기회 균등</span>
+              </label>
+              <span id="label-edu" class="text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">[3] 고교무상+기회균형</span>
+            </div>
+            <input id="input-edu" type="range" min="1" max="5" value="3" class="w-full custom-slider">
+            <div class="flex justify-between text-[10px] text-slate-400 font-semibold px-1">
+              <span>[1] 시장경쟁</span>
+              <span>[2] 초중의무</span>
+              <span>[3] 고교무상</span>
+              <span>[4] 반값등록금</span>
+              <span>[5] 대학무상</span>
+            </div>
+            <p id="desc-edu" class="text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-100 leading-relaxed">
+              고교까지 무상 의무교육을 제공하고, 대학 입학 시 저소득층을 위한 기회균형 특별전형(15%)을 보장합니다.
+            </p>
+          </div>
+
+          <!-- Policy 4: Safety Net -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <span class="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs">4</span>
+                <span>사회적 약자 안전망 & 노동 환경</span>
+              </label>
+              <span id="label-safety" class="text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">[3] 표준안전망 & 의무고용</span>
+            </div>
+            <input id="input-safety" type="range" min="1" max="5" value="3" class="w-full custom-slider">
+            <div class="flex justify-between text-[10px] text-slate-400 font-semibold px-1">
+              <span>[1] 최소규제</span>
+              <span>[2] 기초기준</span>
+              <span>[3] 표준망</span>
+              <span>[4] 생활임금</span>
+              <span>[5] 완전고용</span>
+            </div>
+            <p id="desc-safety" class="text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-100 leading-relaxed">
+              법정 최저임금 준수, 5인 이상 사업장 근로기준법 적용 및 장애인 의무고용제(3.1%)를 강제합니다.
+            </p>
+          </div>
+
+          <div class="pt-4 border-t border-slate-100 flex justify-end">
+            <button id="btn-submit-step1" class="w-full sm:w-auto py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-sm shadow-md transition flex items-center justify-center gap-2">
+              <span>제도 설계 완료 & 베일 벗기</span>
+              <i class="fa-solid fa-arrow-right text-xs"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: VEIL REVEAL & ROLE LOTTERY -->
+      <div id="screen-step2" class="hidden space-y-6">
+        <div class="bg-slate-900 text-white p-6 sm:p-8 rounded-3xl text-center space-y-4">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-indigo-300 text-xs font-semibold">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span>Who Am I? - 정체성 배정</span>
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-black">무지의 베일이 걷힙니다.</h2>
+          <p class="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto">
+            당신이 만든 사회에서 당신은 어떤 사람으로 태어났을까요? 버튼을 눌러 당신의 운명을 확인하세요.
+          </p>
+
+          <div class="pt-4">
+            <button id="btn-draw-role" class="py-3 px-8 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white rounded-2xl font-black text-sm shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2 mx-auto">
+              <i class="fa-solid fa-dice"></i>
+              <span>내 사회적 위치 추첨하기</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Role Identity Card (Shown after draw) -->
+        <div id="role-result-card" class="hidden bg-white p-6 sm:p-8 rounded-3xl border-2 border-indigo-200 shadow-xl space-y-6">
+          <div class="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
+            <div id="role-avatar" class="w-20 h-20 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-3xl font-bold shrink-0 border border-indigo-100">
+              <i class="fa-solid fa-user"></i>
+            </div>
+            <div class="space-y-1">
+              <div class="flex items-center justify-center sm:justify-start gap-2">
+                <span id="role-badge-tag" class="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">최소수혜자</span>
+                <span id="role-income" class="text-xs text-slate-500 font-semibold">월 소득 80만원</span>
+              </div>
+              <h3 id="role-name" class="text-2xl font-black text-slate-900">24세 희귀 난치성 질환 청년</h3>
+              <p id="role-desc" class="text-xs text-slate-600 leading-relaxed max-w-xl">
+                지속적인 고가 약물 치료가 필요하며, 정규직 취업이 어려워 파트타임으로 생계를 유지하고 있습니다.
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+            <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+              <div class="text-[11px] font-bold text-slate-400">자산 및 경제 상태</div>
+              <div id="role-asset" class="text-xs font-black text-slate-800 mt-0.5">보증금 500만원 / 월세 45만원</div>
+            </div>
+            <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+              <div class="text-[11px] font-bold text-slate-400">건강 및 신체 여건</div>
+              <div id="role-health" class="text-xs font-black text-slate-800 mt-0.5">월 의료비 120만원 지출 필수</div>
+            </div>
+            <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+              <div class="text-[11px] font-bold text-slate-400">사회적 지지 기반</div>
+              <div id="role-social" class="text-xs font-black text-slate-800 mt-0.5">가족 부양 없음 (청년 1인가구)</div>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-slate-100 flex justify-end">
+            <button id="btn-goto-step3" class="w-full sm:w-auto py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-sm shadow-md transition flex items-center justify-center gap-2">
+              <span>내가 만든 제도가 내 삶에 미친 영향 확인하기</span>
+              <i class="fa-solid fa-arrow-right text-xs"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3: DETAILED LIFE IMPACT ANALYSIS WITH MULTI-DIMENSIONAL BAR GRAPHS -->
+      <div id="screen-step3" class="hidden space-y-6">
+        
+        <!-- Header Banner -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-2">
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-full bg-violet-100 text-violet-700 text-xs font-bold">3단계 종합 분석</span>
+            <span class="text-xs text-slate-400">1차 무지의 베일 설계 결과 시뮬레이션</span>
+          </div>
+          <h2 class="text-2xl font-black text-slate-900">당신이 설계한 세상 속, 당신과 사회의 현실</h2>
+          <p class="text-xs text-slate-500 leading-relaxed">
+            무지의 베일 속에서 당신이 정했던 규칙들이 실제 당신의 생계와 사회 전체의 불평등에 어떤 결과를 낳았는지 확인해 보세요.
+          </p>
+        </div>
+
+        <!-- 1. PERSONAL IMPACT: 4 DOMAINS DETAILED BAR GRAPHS -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 class="font-black text-slate-900 text-base flex items-center gap-2">
+              <i class="fa-solid fa-heart-pulse text-indigo-600"></i>
+              <span>내 인물의 4대 생활 영역별 체감 만족도 지수</span>
+            </h3>
+            <span class="text-xs font-bold text-indigo-600" id="impact-personal-avg-badge">종합 만족도: 65점</span>
+          </div>
+
+          <div class="space-y-5">
+            <!-- Domain 1: Economy & Disposable Income -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-bold text-slate-700 flex items-center gap-1.5">
+                  <i class="fa-solid fa-coins text-amber-500"></i>
+                  <span>가계 경제 & 가처분 소득</span>
+                </span>
+                <span id="score-val-econ" class="font-black text-slate-900">60점</span>
+              </div>
+              <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                <div id="bar-econ" class="bg-gradient-to-r from-amber-400 to-amber-500 h-full rounded-full transition-all duration-700" style="width: 60%"></div>
+              </div>
+              <p id="desc-bar-econ" class="text-[11px] text-slate-500 leading-normal">
+                세후 가처분 소득과 필수 생활비 대비 생계 안정도를 반영합니다.
+              </p>
+            </div>
+
+            <!-- Domain 2: Healthcare & Life Safety -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-bold text-slate-700 flex items-center gap-1.5">
+                  <i class="fa-solid fa-hospital text-rose-500"></i>
+                  <span>의료 보장 & 생명 안전망</span>
+                </span>
+                <span id="score-val-health" class="font-black text-slate-900">70점</span>
+              </div>
+              <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                <div id="bar-health" class="bg-gradient-to-r from-rose-400 to-rose-500 h-full rounded-full transition-all duration-700" style="width: 70%"></div>
+              </div>
+              <p id="desc-bar-health" class="text-[11px] text-slate-500 leading-normal">
+                고액 비급여 치료비 부담 및 의료 파산 방지율을 계산합니다.
+              </p>
+            </div>
+
+            <!-- Domain 3: Education & Social Mobility -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-bold text-slate-700 flex items-center gap-1.5">
+                  <i class="fa-solid fa-book-open text-blue-500"></i>
+                  <span>교육 기회 & 사회적 사다리</span>
+                </span>
+                <span id="score-val-edu" class="font-black text-slate-900">65점</span>
+              </div>
+              <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                <div id="bar-edu" class="bg-gradient-to-r from-blue-400 to-blue-500 h-full rounded-full transition-all duration-700" style="width: 65%"></div>
+              </div>
+              <p id="desc-bar-edu" class="text-[11px] text-slate-500 leading-normal">
+                자녀 학비 부담과 계층 대물림 방지 및 기회균등 보장도를 나타냅니다.
+              </p>
+            </div>
+
+            <!-- Domain 4: Labor & Basic Safety -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-bold text-slate-700 flex items-center gap-1.5">
+                  <i class="fa-solid fa-shield-halved text-emerald-500"></i>
+                  <span>노동 환경 & 사회 안전망</span>
+                </span>
+                <span id="score-val-safety" class="font-black text-slate-900">65점</span>
+              </div>
+              <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                <div id="bar-safety" class="bg-gradient-to-r from-emerald-400 to-emerald-500 h-full rounded-full transition-all duration-700" style="width: 65%"></div>
+              </div>
+              <p id="desc-bar-safety" class="text-[11px] text-slate-500 leading-normal">
+                해고 위험 대비 고용안정성과 장애인/취약계층의 노동 이동성을 반영합니다.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. MACRO JUSTICE & INEQUALITY INDICATORS (RAWLSIAN METRICS) -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+          <div class="border-b border-slate-100 pb-3">
+            <h3 class="font-black text-slate-900 text-base flex items-center gap-2">
+              <i class="fa-solid fa-scale-balanced text-indigo-600"></i>
+              <span>거시 사회 지표: 정의론 및 경제·사회적 불평등 분석</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">롤스의 차등의 원칙과 사회적 이동성을 종합 평가한 거시 지표입니다.</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <!-- Indicator 1: Maximin Protection -->
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-700">사회적 최소 수혜자 보호도 (차등의 원칙)</span>
+                <span id="badge-rawls-grade" class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black">A등급</span>
+              </div>
+              <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                <div id="bar-rawls-protection" class="bg-indigo-600 h-full rounded-full transition-all duration-700" style="width: 75%"></div>
+              </div>
+              <div class="flex justify-between text-[11px] text-slate-500">
+                <span>점수: <strong id="score-rawls-protection">75점</strong></span>
+                <span id="desc-rawls-protection">가장 불리한 자의 최소 존엄이 충분히 보장됨</span>
+              </div>
+            </div>
+
+            <!-- Indicator 2: Gini Inequality Improvement -->
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-700">소득 불평등 완화 지수 (지니계수 개선율)</span>
+                <span id="badge-gini-rate" class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-black">+24.5%</span>
+              </div>
+              <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                <div id="bar-gini-reduction" class="bg-violet-600 h-full rounded-full transition-all duration-700" style="width: 65%"></div>
+              </div>
+              <div class="flex justify-between text-[11px] text-slate-500">
+                <span>완화율: <strong id="score-gini-reduction">65점</strong></span>
+                <span id="desc-gini-reduction">시장 불평등을 재정 제도로 안정적 보정</span>
+              </div>
+            </div>
+
+            <!-- Indicator 3: Healthcare Access Gap Reduction -->
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-700">의료 접근성 격차 해소 지수</span>
+                <span id="badge-health-gap" class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-xs font-black">70점</span>
+              </div>
+              <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                <div id="bar-health-gap" class="bg-rose-500 h-full rounded-full transition-all duration-700" style="width: 70%"></div>
+              </div>
+              <div class="flex justify-between text-[11px] text-slate-500">
+                <span>치료권 보장: <strong id="score-health-gap">70%</strong></span>
+                <span id="desc-health-gap">중증질환 빈곤층 치료 접근권 보통</span>
+              </div>
+            </div>
+
+            <!-- Indicator 4: Educational Mobility Ladder -->
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-700">교육 기회균등 & 계층이동 사다리 지수</span>
+                <span id="badge-edu-ladder" class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-black">65점</span>
+              </div>
+              <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                <div id="bar-edu-ladder" class="bg-blue-600 h-full rounded-full transition-all duration-700" style="width: 65%"></div>
+              </div>
+              <div class="flex justify-between text-[11px] text-slate-500">
+                <span>사다리 지수: <strong id="score-edu-ladder">65점</strong></span>
+                <span id="desc-edu-ladder">부모 재력에 따른 학력 격차 완화 중</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. COMPARISON CHART: 6 SOCIAL ROLES / PROFESSIONS SATISFACTION BARS -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5">
+          <div class="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 class="font-black text-slate-900 text-base flex items-center gap-2">
+                <i class="fa-solid fa-chart-simple text-violet-600"></i>
+                <span>사회 6대 신분·직업군별 만족도 비교</span>
+              </h3>
+              <p class="text-xs text-slate-400 mt-0.5">내가 설계한 제도가 각계각층의 사람들에게 미친 삶의 만족도 비교입니다.</p>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+              <span class="inline-block w-3 h-3 rounded-full bg-violet-600 ring-2 ring-violet-200"></span>
+              <span class="font-bold text-violet-800">당신의 배정 역할</span>
+            </div>
+          </div>
+
+          <div id="roles-comparison-bars-container" class="space-y-3.5 pt-1">
+            <!-- Dynamically populated 6 bars -->
+          </div>
+        </div>
+
+        <!-- 4. NARRATIVE REALITY DIARY & THOUGHT EXPERIMENT -->
+        <div class="bg-indigo-50/60 p-6 rounded-3xl border border-indigo-100 space-y-3">
+          <div class="flex items-center gap-2 text-indigo-700 text-xs font-black">
+            <i class="fa-solid fa-feather"></i>
+            <span>이 사회에서 살아가는 당신의 오늘 하루 일기</span>
+          </div>
+          <p id="narrative-diary" class="text-xs sm:text-sm text-slate-700 leading-relaxed italic bg-white p-4 rounded-2xl border border-indigo-100/80 shadow-2xs">
+            "병원비 영수증을 받아 들고 한숨을 쉬었다..."
+          </p>
+          <div class="text-xs text-indigo-900 font-semibold pt-1">
+            💡 <strong>롤스의 핵심 질문:</strong> 이제 당신이 어떤 사람인지 알게 되었습니다. 당신은 자신의 배정된 위치를 알고 난 뒤에도, 처음에 세웠던 이 제도를 여전히 공정하다고 지지할 수 있습니까?
+          </div>
+        </div>
+
+        <div class="pt-4 flex justify-end">
+          <button id="btn-goto-step4" class="w-full sm:w-auto py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-sm shadow-md transition flex items-center justify-center gap-2">
+            <span>나의 정체성을 안 상태에서 2차 재설계하기</span>
+            <i class="fa-solid fa-arrow-right text-xs"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 4: REDESIGN WITH IDENTITY KNOWN (5-LEVEL SCALE) -->
+      <div id="screen-step4" class="hidden space-y-6">
+        <div class="bg-amber-50 border border-amber-200 p-6 rounded-3xl space-y-2">
+          <span class="px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-xs font-bold">4단계: 정체성 인지 후 2차 재설계</span>
+          <h2 class="text-xl sm:text-2xl font-black text-amber-950">
+            이제 당신의 신분을 압니다. 제도를 다시 바꾸시겠습니까?
+          </h2>
+          <p class="text-xs text-amber-800 leading-relaxed">
+            자신의 처지(약자 또는 강자)에 유리하도록 규칙을 바꿀 것인가, 아니면 모두를 위한 원칙을 지킬 것인가?<br/>
+            이것이 존 롤스가 던지는 정의론의 가장 중요한 도덕적 질문입니다.
+          </p>
+        </div>
+
+        <!-- Redesign Sliders (5 Levels) -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-8">
+          <!-- Policy 1 Redesign -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="font-bold text-slate-800 text-sm">1. 조세 및 소득 재분배 재설계</label>
+              <span id="label-tax2" class="text-xs font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100">[3] 균형 복지</span>
+            </div>
+            <input id="input-tax2" type="range" min="1" max="5" value="3" class="w-full custom-slider">
+            <div class="flex justify-between text-[10px] text-slate-400 font-semibold px-1">
+              <span>[1] 자유방임</span>
+              <span>[2] 선별복지</span>
+              <span>[3] 균형복지</span>
+              <span>[4] 보편수당</span>
+              <span>[5] 급진평등</span>
+            </div>
+          </div>
+
+          <!-- Policy 2 Redesign -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="font-bold text-slate-800 text-sm">2. 의료 보장 체계 재설계</label>
+              <span id="label-health2" class="text-xs font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100">[3] 표준건보</span>
+            </div>
+            <input id="input-health2" type="range" min="1" max="5" value="3" class="w-full custom-slider">
+            <div class="flex justify-between text-[10px] text-slate-400 font-semibold px-1">
+              <span>[1] 전면민간</span>
+              <span>[2] 극빈층만</span>
+              <span>[3] 표준건보</span>
+              <span>[4] 비급여포함</span>
+              <span>[5] 전면무상</span>
+            </div>
+          </div>
+
+          <!-- Policy 3 Redesign -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="font-bold text-slate-800 text-sm">3. 교육 및 기회 균등 재설계</label>
+              <span id="label-edu2" class="text-xs font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100">[3] 고교무상</span>
+            </div>
+            <input id="input-edu2" type="range" min="1" max="5" value="3" class="w-full custom-slider">
+            <div class="flex justify-between text-[10px] text-slate-400 font-semibold px-1">
+              <span>[1] 시장경쟁</span>
+              <span>[2] 초중의무</span>
+              <span>[3] 고교무상</span>
+              <span>[4] 반값등록금</span>
+              <span>[5] 대학무상</span>
+            </div>
+          </div>
+
+          <!-- Policy 4 Redesign -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="font-bold text-slate-800 text-sm">4. 약자 안전망 & 노동 환경 재설계</label>
+              <span id="label-safety2" class="text-xs font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100">[3] 표준망</span>
+            </div>
+            <input id="input-safety2" type="range" min="1" max="5" value="3" class="w-full custom-slider">
+            <div class="flex justify-between text-[10px] text-slate-400 font-semibold px-1">
+              <span>[1] 최소규제</span>
+              <span>[2] 기초기준</span>
+              <span>[3] 표준망</span>
+              <span>[4] 생활임금</span>
+              <span>[5] 완전고용</span>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-slate-100 flex justify-end">
+            <button id="btn-submit-step4" class="w-full sm:w-auto py-3 px-6 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl font-bold text-sm shadow-md transition flex items-center justify-center gap-2">
+              <span>2차 재설계 확정 & 성찰 작성하기</span>
+              <i class="fa-solid fa-arrow-right text-xs"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 5: FINAL REFLECTION REPORT -->
+      <div id="screen-step5" class="hidden space-y-6">
+        <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+          <div class="border-b border-slate-100 pb-4">
+            <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">5단계: 최종 성찰 및 학습 리포트</span>
+            <h2 class="text-2xl font-black text-slate-900 mt-1">내가 선택한 정의는 어떤 모습이었습니까?</h2>
+          </div>
+
+          <!-- 1st vs 2nd Policy Comparison Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border border-slate-100 rounded-2xl overflow-hidden">
+              <thead class="bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
+                <tr>
+                  <th class="p-3">정책 영역</th>
+                  <th class="p-3">1차 설계 (무지의 베일)</th>
+                  <th class="p-3">2차 재설계 (신분 확인 후)</th>
+                  <th class="p-3">변화 양상</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-slate-700">
+                <tr>
+                  <td class="p-3 font-bold">조세 및 소득 재분배</td>
+                  <td id="compare-tax-1" class="p-3">중부담·중복지</td>
+                  <td id="compare-tax-2" class="p-3">중부담·중복지</td>
+                  <td id="compare-tax-diff" class="p-3 font-semibold text-slate-500">유지</td>
+                </tr>
+                <tr>
+                  <td class="p-3 font-bold">의료 보장 체계</td>
+                  <td id="compare-health-1" class="p-3">표준건보</td>
+                  <td id="compare-health-2" class="p-3">표준건보</td>
+                  <td id="compare-health-diff" class="p-3 font-semibold text-slate-500">유지</td>
+                </tr>
+                <tr>
+                  <td class="p-3 font-bold">교육 및 기회 균등</td>
+                  <td id="compare-edu-1" class="p-3">고교무상</td>
+                  <td id="compare-edu-2" class="p-3">고교무상</td>
+                  <td id="compare-edu-diff" class="p-3 font-semibold text-slate-500">유지</td>
+                </tr>
+                <tr>
+                  <td class="p-3 font-bold">약자 안전망 & 노동</td>
+                  <td id="compare-safety-1" class="p-3">표준안전망</td>
+                  <td id="compare-safety-2" class="p-3">표준안전망</td>
+                  <td id="compare-safety-diff" class="p-3 font-semibold text-slate-500">유지</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Student Self Reflection Form -->
+          <div class="space-y-4 pt-2">
+            <label class="block font-bold text-slate-800 text-sm">
+              📝 나의 성찰 작성 (교사 대시보드로 실시간 제출됩니다)
+            </label>
+            <textarea id="input-reflection" rows="4" class="w-full p-4 rounded-2xl border border-slate-200 text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition leading-relaxed" placeholder="무지의 베일 속에서 제도를 만들 때와, 내 역할을 알고 난 뒤 제도를 수정할 때 어떤 고민이 들었나요? 공정한 사회란 무엇일까요?"></textarea>
+            
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+              <button id="btn-save-reflection" class="w-full sm:w-auto py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs shadow-md transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+                <span>성찰 내용 선생님께 전송 완료</span>
+              </button>
+              <button id="btn-copy-report" class="w-full sm:w-auto py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs transition flex items-center justify-center gap-2">
+                <i class="fa-regular fa-copy"></i>
+                <span>내 활동 결과 요약 복사하기</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL 1: STUDENT JOIN DIALOG (MANDATORY 5-DIGIT ID & NAME) -->
+  <div id="student-join-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-slate-100 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="font-black text-slate-900 text-base flex items-center gap-2">
+          <i class="fa-solid fa-user-plus text-violet-600"></i>
+          <span>수업 참여 코드 입력</span>
+        </h3>
+        <button id="btn-close-join-modal" class="text-slate-400 hover:text-slate-600 p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-500 leading-relaxed">
+        선생님 화면의 4자리 코드와 본인의 5자리 학번 및 이름을 정확히 입력하세요.
+      </p>
+
+      <div class="space-y-3 text-left">
+        <div>
+          <label class="text-[11px] font-bold text-slate-600 block mb-1">수업 코드 (4자리 숫자) *</label>
+          <input id="input-modal-room-code" type="text" maxlength="4" placeholder="예: 7429" class="w-full text-center tracking-widest text-lg font-black p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="text-[11px] font-bold text-slate-600 block mb-1">학번 (5자리 숫자 의무) *</label>
+          <input id="input-modal-student-id" type="text" maxlength="5" placeholder="예: 10101 (학년반번호 5자리)" class="w-full text-xs font-semibold p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="text-[11px] font-bold text-slate-600 block mb-1">이름 *</label>
+          <input id="input-modal-student-name" type="text" placeholder="예: 홍길동" class="w-full text-xs font-semibold p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:outline-none">
+        </div>
+      </div>
+
+      <div class="pt-2">
+        <button id="btn-submit-student-join" class="w-full py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl font-bold text-xs shadow-md transition flex items-center justify-center gap-2">
+          <span>시뮬레이터 입장하기</span>
+          <i class="fa-solid fa-arrow-right text-xs"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: TEACHER QR CODE BIG SCREEN MODAL -->
+  <div id="teacher-qr-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-slate-100 text-center space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center font-bold text-sm">
+            <i class="fa-solid fa-qrcode"></i>
+          </div>
+          <h3 class="font-black text-slate-900 text-base">학생 참여 QR 코드</h3>
+        </div>
+        <button id="btn-close-qr-modal" class="text-slate-400 hover:text-slate-600 p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-500 leading-relaxed">
+        학생들이 스마트폰 카메라로 스캔하면 4자리 수업 코드가 자동 입력된 상태로 즉시 입장합니다.
+      </p>
+
+      <!-- QR Code Canvas Container -->
+      <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200 inline-block mx-auto shadow-inner">
+        <div id="qrcode-canvas-box" class="w-[200px] h-[200px] flex items-center justify-center mx-auto bg-white p-2 rounded-xl"></div>
+      </div>
+
+      <div class="bg-indigo-50 p-3 rounded-2xl border border-indigo-100">
+        <div class="text-[10px] font-bold text-indigo-500 uppercase">수업 참여 코드 (4자리)</div>
+        <div id="modal-qr-room-code" class="text-3xl font-black tracking-widest text-indigo-950 mt-0.5">----</div>
+      </div>
+
+      <div class="space-y-2 pt-1">
+        <button id="btn-copy-qr-link" class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-link"></i>
+          <span>학생 접속 링크(URL) 복사</span>
+        </button>
+        <button id="btn-close-qr-modal-bottom" class="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold transition">
+          닫기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: TEACHER STUDENT DETAIL MODAL -->
+  <div id="teacher-student-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-100 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs" id="detail-modal-avatar">
+            학
+          </div>
+          <div>
+            <h3 class="font-black text-slate-900 text-base" id="detail-modal-name">홍길동 (10101)</h3>
+            <p class="text-[11px] text-slate-400" id="detail-modal-time">최근 활동: 방금 전</p>
+          </div>
+        </div>
+        <button id="btn-close-detail-modal" class="text-slate-400 hover:text-slate-600 p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Student Role Info -->
+      <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+        <div class="text-[10px] font-bold text-slate-400 uppercase">배정된 사회적 역할</div>
+        <div class="text-sm font-black text-slate-900 mt-0.5" id="detail-modal-role">추첨 진행 중...</div>
+      </div>
+
+      <!-- Policy Differences -->
+      <div class="space-y-2">
+        <div class="text-xs font-bold text-slate-700">1차(무지) vs 2차(정체성) 정책 변화</div>
+        <div class="grid grid-cols-2 gap-2 text-xs" id="detail-modal-policies">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Student Written Reflection -->
+      <div class="space-y-1.5 pt-1">
+        <div class="text-xs font-bold text-slate-700">학생이 작성한 성찰</div>
+        <div id="detail-modal-reflection" class="text-xs text-slate-600 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 leading-relaxed italic min-h-[60px]">
+          아직 성찰을 작성하지 않았습니다.
+        </div>
+      </div>
+
+      <!-- Teacher Feedback Action -->
+      <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+        <button id="btn-praise-1" class="flex-1 py-2 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1">
+          <span>칭찬 전송 👏</span>
+        </button>
+        <button id="btn-praise-2" class="flex-1 py-2 px-3 bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1">
+          <span>성찰 격려 💡</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Box -->
+  <div id="toast-message" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-xl opacity-0 pointer-events-none transition-all duration-300 z-50 flex items-center gap-2">
+    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toast-text">알림 내용</span>
+  </div>
+
+  <!-- Application Core Script -->
+  <script>
+    /* Global Policies Dictionary (5-Level Scale) */
+    const POLICY_DATA = {
+      tax: [
+        { title: '[1] 극단적 자유방임', desc: '소득세율 5% 미만, 복지 재정 전면 폐지, 부의 축적 완전 자유.' },
+        { title: '[2] 제한적 선별복지', desc: '소득세율 15%, 중증 극빈층 대상 최소 구호금만 지급.' },
+        { title: '[3] 균형 복지 (중부담·중복지)', desc: 'OECD 평균 수준 누진세율(30~40%) 및 사회보험 운영.' },
+        { title: '[4] 고부담·보편수당 (기본소득)', desc: '소득세율 50% 수준, 모든 시민에게 기초 기본소득 정기 지급.' },
+        { title: '[5] 급진적 평등주의 (자산격차 상한제)', desc: '최고세율 75% 이상, 상속·자산 격차 엄격 상한선 규제.' }
+      ],
+      health: [
+        { title: '[1] 전면 민간보험', desc: '국가 건강보험 폐지, 전액 개인 민간보험 가입 및 시장 원리.' },
+        { title: '[2] 극빈층만 최소지원', desc: '일반 국민은 민간보험 중심, 차상위계층만 기초 의료급여 제공.' },
+        { title: '[3] 국민건강보험 (기본형)', desc: '의무 국민건강보험으로 일상 진료 70% 지원, 고가 비급여는 자부담.' },
+        { title: '[4] 비급여 전면포괄 건보', desc: '중증·난치질환 비급여 항목까지 국가가 90% 이상 보장.' },
+        { title: '[5] 완전 무상의료제', desc: '국공립 중심 완전 무상의료, 병원비 일체 국가 전액 부담.' }
+      ],
+      edu: [
+        { title: '[1] 시장 자율경쟁', desc: '학비 전액 자부담, 기여입학제 허용 및 시장 서열화.' },
+        { title: '[2] 초·중 기본의무', desc: '초·중학교만 무상 제공, 고교 및 대학교육은 전액 자비 부담.' },
+        { title: '[3] 고교무상+기회균형', desc: '고교 무상교육, 대학 저소득층 기회균형 특별전형(15%) 보장.' },
+        { title: '[4] 반값등록금+적극우대', desc: '국공립/사립 반값등록금 실현, 지역 및 취약계층 30% 할당.' },
+        { title: '[5] 대학교육 전면무상', desc: '모든 대학교육 무상화 및 교육기회 완전 평등 보장.' }
+      ],
+      safety: [
+        { title: '[1] 최소규제 (노동유연화)', desc: '최저임금 폐지, 해고 완전 자유, 기업 규제 최소화.' },
+        { title: '[2] 기초기준 규제', desc: '낮은 최저임금 기준 적용, 표준 노동시간 규제 미흡.' },
+        { title: '[3] 표준안전망 & 의무고용', desc: '법정 최저임금 보장, 5인 이상 사업장 근로기준법 및 장애인 의무고용.' },
+        { title: '[4] 생활임금 & 고용안정', desc: '생활임금 도입, 비정규직 정규직 전환 인센티브 및 무장애 인프라 확대.' },
+        { title: '[5] 완전고용 국가보장', desc: '정부 최종 고용보장제, 장애인·청년 공공 일자리 100% 보장.' }
+      ]
+    };
+
+    /* 6 Diverse Social Personas for Rawls' Experiment */
+    const CHARACTERS = [
+      {
+        id: 'c1',
+        title: '희귀 난치성 질환 청년 (24세)',
+        income: '월 80만원 (알바)',
+        tag: '최소수혜자',
+        asset: '보증금 500만원 / 월세 45만원',
+        health: '고가 비급여 약물 치료 필수 (월 120만원)',
+        social: '청년 1인가구, 부양가족 없음',
+        desc: '정기적인 치료가 필요해 정규직 취업이 어려우며, 의료비 부담으로 일상생활에 극심한 불안을 겪고 있습니다.'
+      },
+      {
+        id: 'c2',
+        title: '휠체어 이용 프리랜서 디자이너 (29세)',
+        income: '월 180만원',
+        tag: '이동·노동약자',
+        asset: '임대주택 거주 (보증금 2,000만원)',
+        health: '선천성 척수장애 (보조기구 유지비 월 30만원)',
+        social: '부모님 은퇴, 독립 생계 유지',
+        desc: '재택근무로 능력을 발휘하고 있으나, 대중교통 이용과 사무실 편의시설 부족으로 외부 협업에 제약이 큽니다.'
+      },
+      {
+        id: 'c3',
+        title: '다문화·한부모가정 고교생 (18세)',
+        income: '가구 월 120만원',
+        tag: '교육·기회취약',
+        asset: '반지하 월세 거주',
+        health: '특이 질환 없음 (건강 양호)',
+        social: '어머니와 단둘이 거주',
+        desc: '학업 열정이 높으나 사교육을 받을 형편이 안 되며, 대학 진학 시 등록금과 생활비 마련이 막막한 상황입니다.'
+      },
+      {
+        id: 'c4',
+        title: '골목상권 영세 자영업자 (52세)',
+        income: '월 240만원 (변동 큼)',
+        tag: '경기민감 계층',
+        asset: '상가 보증금 3,000만원 / 사업자 대출 8,000만원',
+        health: '만성 요통 및 고혈압',
+        social: '배우자와 자녀 2명 (대학생, 중학생)',
+        desc: '월세와 대출 이자 부담으로 하루 14시간 일하고 있으며, 경기 침체와 임대료 상승에 취약합니다.'
+      },
+      {
+        id: 'c5',
+        title: '중견 IT기업 직장인 (38세)',
+        income: '월 420만원',
+        tag: '중산층 근로자',
+        asset: '주택담보대출 아파트 거주 (순자산 2.5억원)',
+        health: '직장인 건강검진 관리 양호',
+        social: '외벌이, 배우자 및 유아 1명',
+        desc: '성실히 세금을 납부하고 자녀 양육비와 대출 원리금을 갚아나가는 전형적인 중산층 가구입니다.'
+      },
+      {
+        id: 'c6',
+        title: '성공한 벤처 창업가 & 대주주 (43세)',
+        income: '월 2,500만원+ (배당 별도)',
+        tag: '고소득·자산가',
+        asset: '부동산 및 법인 주식 (순자산 60억원 이상)',
+        health: 'VIP 건강검진 관리',
+        social: '자녀 조기 유학, 넉넉한 인적 네트워크',
+        desc: '위험을 감수하고 창업에 성공하여 높은 소득을 올리고 있으며, 과도한 조세와 규제가 혁신을 저해한다고 여깁니다.'
+      }
+    ];
+
+    /* Application State */
+    const ClassroomStore = {
+      roomCode: '',
+      role: 'lobby', // 'lobby' | 'teacher' | 'student'
+      students: {},
+      selectedStudentId: null
+    };
+
+    const studentState = {
+      id: '',
+      name: '',
+      sessionKey: 's_' + Math.random().toString(36).substring(2, 9),
+      currentStep: 1,
+      policies1: { tax: 3, health: 3, edu: 3, safety: 3 },
+      policies2: { tax: 3, health: 3, edu: 3, safety: 3 },
+      character: null,
+      reflection: '',
+      lastActive: Date.now()
+    };
+
+    /* Networking Clients (MQTT WebSocket + BroadcastChannel fallback) */
+    let mqttClient = null;
+    const localChannel = ('BroadcastChannel' in window) ? new BroadcastChannel('rawls_classroom_sync') : null;
+
+    function initNetwork(roomCode) {
+      if (!roomCode) return;
+      
+      try {
+        if (mqttClient) {
+          mqttClient.end(true);
+          mqttClient = null;
+        }
+
+        const clientId = 'rawls_' + Math.random().toString(16).substring(2, 10);
+        mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+          clientId: clientId,
+          clean: true,
+          connectTimeout: 5000,
+          reconnectPeriod: 3000
+        });
+
+        const topic = `veil_of_ignorance_room/${roomCode}`;
+
+        mqttClient.on('connect', () => {
+          updateNetworkBadge(true);
+          mqttClient.subscribe(topic, { qos: 0 });
+          
+          if (ClassroomStore.role === 'teacher') {
+            broadcastMessage('TEACHER_PING', { roomCode: roomCode });
+          } else if (ClassroomStore.role === 'student') {
+            syncStudentToServer();
+          }
+        });
+
+        mqttClient.on('message', (t, payload) => {
+          try {
+            const data = JSON.parse(payload.toString());
+            handleNetworkMessage(data);
+          } catch (e) {
+            console.error(e);
+          }
+        });
+
+        mqttClient.on('error', () => {
+          updateNetworkBadge(false);
+        });
+      } catch (err) {
+        console.warn('MQTT fallback to localChannel:', err);
+      }
+    }
+
+    if (localChannel) {
+      localChannel.onmessage = (event) => {
+        if (event.data && typeof event.data === 'object') {
+          handleNetworkMessage(event.data);
+        }
+      };
+    }
+
+    function broadcastMessage(type, payload) {
+      const msg = {
+        type: type,
+        roomCode: ClassroomStore.roomCode,
+        senderRole: ClassroomStore.role,
+        payload: payload,
+        timestamp: Date.now()
+      };
+
+      if (localChannel) {
+        localChannel.postMessage(msg);
+      }
+
+      if (mqttClient && mqttClient.connected) {
+        const topic = `veil_of_ignorance_room/${ClassroomStore.roomCode}`;
+        mqttClient.publish(topic, JSON.stringify(msg));
+      }
+    }
+
+    function handleNetworkMessage(msg) {
+      if (!msg || msg.roomCode !== ClassroomStore.roomCode) return;
+
+      if (ClassroomStore.role === 'teacher') {
+        if (msg.type === 'STUDENT_SYNC' || msg.type === 'STUDENT_JOIN') {
+          const s = msg.payload;
+          if (s && s.id) {
+            ClassroomStore.students[s.id] = s;
+            renderTeacherDashboard();
+          }
+        }
+      } else if (ClassroomStore.role === 'student') {
+        if (msg.type === 'TEACHER_PING') {
+          syncStudentToServer();
+        } else if (msg.type === 'TEACHER_FEEDBACK' && msg.payload.studentId === studentState.id) {
+          showToast(`선생님 메시지: ${msg.payload.message}`);
+        }
+      }
+    }
+
+    function syncStudentToServer() {
+      if (!ClassroomStore.roomCode || ClassroomStore.role !== 'student' || !studentState.id) return;
+      studentState.lastActive = Date.now();
+      broadcastMessage('STUDENT_SYNC', { ...studentState });
+    }
+
+    function updateNetworkBadge(connected) {
+      const badge = document.getElementById('network-status-badge');
+      if (badge) {
+        badge.className = connected 
+          ? 'inline-block w-2 h-2 rounded-full bg-emerald-500' 
+          : 'inline-block w-2 h-2 rounded-full bg-amber-500';
+      }
+    }
+
+    function showToast(text) {
+      const toast = document.getElementById('toast-message');
+      const toastText = document.getElementById('toast-text');
+      if (!toast || !toastText) return;
+      toastText.textContent = text;
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      toast.classList.add('opacity-100');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0', 'pointer-events-none');
+      }, 2500);
+    }
+
+    function copyToClipboard(str) {
+      const temp = document.createElement('textarea');
+      temp.value = str;
+      document.body.appendChild(temp);
+      temp.select();
+      try {
+        document.execCommand('copy');
+        showToast('클립보드에 복사되었습니다.');
+      } catch (e) {
+        showToast('복사 실패');
+      }
+      document.body.removeChild(temp);
+    }
+
+    function showScreen(screenId) {
+      ['screen-lobby', 'screen-teacher', 'screen-student'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
+      const target = document.getElementById(screenId);
+      if (target) target.classList.remove('hidden');
+
+      const userControls = document.getElementById('header-user-controls');
+      if (screenId === 'screen-lobby') {
+        userControls.classList.add('hidden');
+      } else {
+        userControls.classList.remove('hidden');
+      }
+    }
+
+    function goToStudentStep(step) {
+      studentState.currentStep = step;
+      ['screen-step1', 'screen-step2', 'screen-step3', 'screen-step4', 'screen-step5'].forEach((id, idx) => {
+        const el = document.getElementById(id);
+        if (el) {
+          if (idx + 1 === step) el.classList.remove('hidden');
+          else el.classList.add('hidden');
+        }
+      });
+
+      const stepBadge = document.getElementById('student-step-badge');
+      const stepTitle = document.getElementById('student-step-title');
+      const stepIndicator = document.getElementById('student-step-indicator');
+
+      const titles = [
+        '1단계: 무지의 베일 속 사회 제도 설계',
+        '2단계: 정체성 추첨 (Who Am I?)',
+        '3단계: 내 삶과 사회 영향 분석',
+        '4단계: 정체성 인지 후 2차 재설계',
+        '5단계: 최종 성찰 및 학습 리포트'
+      ];
+
+      if (stepBadge) stepBadge.textContent = step;
+      if (stepTitle) stepTitle.textContent = titles[step - 1];
+      if (stepIndicator) stepIndicator.textContent = `Step ${step} / 5`;
+
+      syncStudentToServer();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function updatePolicyLabels1() {
+      const taxVal = parseInt(document.getElementById('input-tax').value, 10);
+      const healthVal = parseInt(document.getElementById('input-health').value, 10);
+      const eduVal = parseInt(document.getElementById('input-edu').value, 10);
+      const safetyVal = parseInt(document.getElementById('input-safety').value, 10);
+
+      studentState.policies1.tax = taxVal;
+      studentState.policies1.health = healthVal;
+      studentState.policies1.edu = eduVal;
+      studentState.policies1.safety = safetyVal;
+
+      document.getElementById('label-tax').textContent = POLICY_DATA.tax[taxVal - 1].title;
+      document.getElementById('desc-tax').textContent = POLICY_DATA.tax[taxVal - 1].desc;
+
+      document.getElementById('label-health').textContent = POLICY_DATA.health[healthVal - 1].title;
+      document.getElementById('desc-health').textContent = POLICY_DATA.health[healthVal - 1].desc;
+
+      document.getElementById('label-edu').textContent = POLICY_DATA.edu[eduVal - 1].title;
+      document.getElementById('desc-edu').textContent = POLICY_DATA.edu[eduVal - 1].desc;
+
+      document.getElementById('label-safety').textContent = POLICY_DATA.safety[safetyVal - 1].title;
+      document.getElementById('desc-safety').textContent = POLICY_DATA.safety[safetyVal - 1].desc;
+
+      syncStudentToServer();
+    }
+
+    function updatePolicyLabels2() {
+      const taxVal = parseInt(document.getElementById('input-tax2').value, 10);
+      const healthVal = parseInt(document.getElementById('input-health2').value, 10);
+      const eduVal = parseInt(document.getElementById('input-edu2').value, 10);
+      const safetyVal = parseInt(document.getElementById('input-safety2').value, 10);
+
+      studentState.policies2.tax = taxVal;
+      studentState.policies2.health = healthVal;
+      studentState.policies2.edu = eduVal;
+      studentState.policies2.safety = safetyVal;
+
+      document.getElementById('label-tax2').textContent = POLICY_DATA.tax[taxVal - 1].title;
+      document.getElementById('label-health2').textContent = POLICY_DATA.health[healthVal - 1].title;
+      document.getElementById('label-edu2').textContent = POLICY_DATA.edu[eduVal - 1].title;
+      document.getElementById('label-safety2').textContent = POLICY_DATA.safety[safetyVal - 1].title;
+
+      syncStudentToServer();
+    }
+
+    function calculateImpact() {
+      const p = studentState.policies1;
+      const c = studentState.character || CHARACTERS[0];
+
+      // 1. Personal 4 Domains Score (0~100)
+      let econScore = 50;
+      let healthScore = 50;
+      let eduScore = 50;
+      let safetyScore = 50;
+
+      if (c.id === 'c1') { // Rare disease youth
+        econScore = Math.round(15 + p.tax * 14);
+        healthScore = Math.round(10 + p.health * 18);
+        eduScore = Math.round(30 + p.edu * 12);
+        safetyScore = Math.round(20 + p.safety * 15);
+      } else if (c.id === 'c2') { // Wheelchair designer
+        econScore = Math.round(25 + p.tax * 13);
+        healthScore = Math.round(20 + p.health * 15);
+        eduScore = Math.round(35 + p.edu * 12);
+        safetyScore = Math.round(10 + p.safety * 18);
+      } else if (c.id === 'c3') { // Multiracial youth
+        econScore = Math.round(20 + p.tax * 14);
+        healthScore = Math.round(35 + p.health * 12);
+        eduScore = Math.round(10 + p.edu * 18);
+        safetyScore = Math.round(25 + p.safety * 14);
+      } else if (c.id === 'c4') { // Small business owner
+        econScore = Math.round(75 - Math.abs(p.tax - 3) * 12);
+        healthScore = Math.round(30 + p.health * 13);
+        eduScore = Math.round(30 + p.edu * 13);
+        safetyScore = Math.round(80 - p.safety * 8);
+      } else if (c.id === 'c5') { // Middle-class IT worker
+        econScore = Math.round(85 - p.tax * 8);
+        healthScore = Math.round(40 + p.health * 11);
+        eduScore = Math.round(40 + p.edu * 11);
+        safetyScore = Math.round(45 + p.safety * 10);
+      } else if (c.id === 'c6') { // Venture Founder
+        econScore = Math.round(100 - p.tax * 16);
+        healthScore = Math.round(90 - p.health * 3);
+        eduScore = Math.round(80 - p.edu * 4);
+        safetyScore = Math.round(95 - p.safety * 12);
+      }
+
+      // Bound checks
+      econScore = Math.max(10, Math.min(100, econScore));
+      healthScore = Math.max(10, Math.min(100, healthScore));
+      eduScore = Math.max(10, Math.min(100, eduScore));
+      safetyScore = Math.max(10, Math.min(100, safetyScore));
+
+      const avgPersonal = Math.round((econScore + healthScore + eduScore + safetyScore) / 4);
+
+      // Render Personal Bars
+      document.getElementById('impact-personal-avg-badge').textContent = `종합 체감 만족도: ${avgPersonal}점`;
+
+      document.getElementById('score-val-econ').textContent = `${econScore}점`;
+      document.getElementById('bar-econ').style.width = `${econScore}%`;
+
+      document.getElementById('score-val-health').textContent = `${healthScore}점`;
+      document.getElementById('bar-health').style.width = `${healthScore}%`;
+
+      document.getElementById('score-val-edu').textContent = `${eduScore}점`;
+      document.getElementById('bar-edu').style.width = `${eduScore}%`;
+
+      document.getElementById('score-val-safety').textContent = `${safetyScore}점`;
+      document.getElementById('bar-safety').style.width = `${safetyScore}%`;
+
+      // 2. Macro Rawlsian Indicators
+      const rawlsProtectionScore = Math.round(((p.tax * 0.25) + (p.health * 0.35) + (p.edu * 0.20) + (p.safety * 0.20)) * 20);
+      let rawlsGrade = 'C등급';
+      if (rawlsProtectionScore >= 85) rawlsGrade = 'A+ 등급 (최상)';
+      else if (rawlsProtectionScore >= 70) rawlsGrade = 'A 등급 (우수)';
+      else if (rawlsProtectionScore >= 55) rawlsGrade = 'B 등급 (보통)';
+      else if (rawlsProtectionScore >= 40) rawlsGrade = 'C 등급 (미흡)';
+      else rawlsGrade = 'F 등급 (위험)';
+
+      document.getElementById('badge-rawls-grade').textContent = rawlsGrade;
+      document.getElementById('score-rawls-protection').textContent = `${rawlsProtectionScore}점`;
+      document.getElementById('bar-rawls-protection').style.width = `${rawlsProtectionScore}%`;
+
+      const giniImprovement = Math.round(p.tax * 6.5 + p.safety * 2.5);
+      const giniScore = Math.min(100, Math.round(giniImprovement * 2.2));
+      document.getElementById('badge-gini-rate').textContent = `+${giniImprovement}%`;
+      document.getElementById('score-gini-reduction').textContent = `${giniScore}점`;
+      document.getElementById('bar-gini-reduction').style.width = `${giniScore}%`;
+
+      const healthGapScore = Math.round(p.health * 19);
+      document.getElementById('badge-health-gap').textContent = `${healthGapScore}점`;
+      document.getElementById('score-health-gap').textContent = `${healthGapScore}%`;
+      document.getElementById('bar-health-gap').style.width = `${healthGapScore}%`;
+
+      const eduLadderScore = Math.round(p.edu * 19);
+      document.getElementById('badge-edu-ladder').textContent = `${eduLadderScore}점`;
+      document.getElementById('score-edu-ladder').textContent = `${eduLadderScore}점`;
+      document.getElementById('bar-edu-ladder').style.width = `${eduLadderScore}%`;
+
+      // 3. Render 6 Social Roles Bars
+      renderRolesComparisonBars(p, c.id);
+
+      // 4. Realistic Diary Narrative
+      const diaryBox = document.getElementById('narrative-diary');
+      if (c.id === 'c1') {
+        if (p.health >= 4) {
+          diaryBox.textContent = `"병원 원무과에서 희귀약제 본인부담금이 5만 원으로 줄었다는 말을 듣고 눈물이 났다. 무지의 베일 속에서 만든 강력한 의료보장 제도 덕분에 파산하지 않고 내일을 꿈꿀 수 있게 되었다."`;
+        } else {
+          diaryBox.textContent = `"이번 달 약값 120만 원이 청구된 고지서를 보며 가슴이 턱 막혔다. 건강보험 적용이 안 되는 항목이 너무 많아 치료를 중단해야 할지도 모르겠다. 내가 약자로 태어날 줄 알았다면 의료 정책을 이렇게 정하지 않았을 텐데..."`;
+        }
+      } else if (c.id === 'c2') {
+        if (p.safety >= 4) {
+          diaryBox.textContent = `"지하철역 휠체어 리프트와 저상버스가 대폭 확대되어 클라이언트 미팅에 늦지 않게 도착했다. 의무고용제와 배리어프리 규제 덕분에 장애를 가졌어도 당당한 전문 디자이너로 존중받는다."`;
+        } else {
+          diaryBox.textContent = `"약속 장소에 휠체어 경사로가 없어 계단 밑에서 30분을 서성였다. 노동 규제가 느슨해 프리랜서 장애인에게 돌아오는 안전망은 거의 없다. 세상은 여전히 건강한 다수만의 것이다."`;
+        }
+      } else if (c.id === 'c3') {
+        if (p.edu >= 4) {
+          diaryBox.textContent = `"등록금 걱정 없이 국립대에 진학할 수 있는 특별 전형과 반값 등록금 혜택을 받았다. 부모님의 가난이 내 꿈까지 꺾지 못하도록 막아준 공정한 교육 사다리에 감사한다."`;
+        } else {
+          diaryBox.textContent = `"대학 등록금 안내문을 어머니께 보여드리지 못하고 서랍에 숨겼다. 사교육도 못 받고 학비 지원도 없는 이 사회에서 계층 상승은 다른 세상 이야기처럼 느껴진다."`;
+        }
+      } else if (c.id === 'c4') {
+        diaryBox.textContent = `"재료비와 공과금을 내고 나니 손에 쥔 돈이 얼마 없다. 복지 혜택과 조세 부담 사이에서 아슬아슬하게 줄타기를 하는 기분이다. 성실한 자영업자를 위한 현실적인 지원이 더 필요하다."`;
+      } else if (c.id === 'c5') {
+        diaryBox.textContent = `"월급 명세서에서 원천징수된 세금을 보며 가끔 한숨이 나오지만, 우리 아이가 다니는 학교와 부모님의 건강보험 혜택을 보면 사회적 연대의 가치를 실감한다."`;
+      } else if (c.id === 'c6') {
+        if (p.tax >= 4) {
+          diaryBox.textContent = `"수많은 밤을 새워 성공시킨 기업인데, 소득과 자산에 매겨지는 높은 세금을 볼 때마다 사업 의욕이 꺾인다. 어려운 사람을 돕는 것은 동의하지만 혁신의 대가도 정당히 보상받아야 한다."`;
+        } else {
+          diaryBox.textContent = `"낮은 세율과 유연한 기업 규제 덕분에 큰 부를 축적할 수 있었다. 하지만 거리의 취약계층을 볼 때마다, 이 사회의 지속가능성을 위해 최소한의 안전망은 지켜져야 하지 않을까 고민된다."`;
+        }
+      }
+    }
+
+    function renderRolesComparisonBars(p, myRoleId) {
+      const container = document.getElementById('roles-comparison-bars-container');
+      if (!container) return;
+      container.innerHTML = '';
+
+      CHARACTERS.forEach(char => {
+        let score = 50;
+        if (char.id === 'c1') score = Math.round(15 + p.health * 12 + p.tax * 5);
+        else if (char.id === 'c2') score = Math.round(20 + p.safety * 11 + p.health * 5);
+        else if (char.id === 'c3') score = Math.round(20 + p.edu * 12 + p.tax * 4);
+        else if (char.id === 'c4') score = Math.round(65 - Math.abs(p.tax - 3) * 8);
+        else if (char.id === 'c5') score = Math.round(75 - p.tax * 5 + p.edu * 4);
+        else if (char.id === 'c6') score = Math.round(95 - p.tax * 13);
+
+        score = Math.max(10, Math.min(100, score));
+
+        const isMe = char.id === myRoleId;
+        const barItem = document.createElement('div');
+        barItem.className = `p-3 rounded-2xl border transition ${isMe ? 'bg-violet-50/80 border-violet-300 ring-2 ring-violet-400' : 'bg-slate-50 border-slate-200/80'}`;
+
+        barItem.innerHTML = `
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <div class="flex items-center gap-2">
+              <span class="font-black text-slate-800">${char.title}</span>
+              ${isMe ? '<span class="px-2 py-0.5 rounded-full bg-violet-600 text-white text-[10px] font-black">당신의 배정 역할</span>' : `<span class="text-[10px] text-slate-400 font-semibold">${char.tag}</span>`}
+            </div>
+            <span class="font-black ${isMe ? 'text-violet-700' : 'text-slate-700'}">${score}점</span>
+          </div>
+          <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-700 ${isMe ? 'bg-gradient-to-r from-violet-600 to-indigo-600' : 'bg-slate-400'}" style="width: ${score}%"></div>
+          </div>
+        `;
+
+        container.appendChild(barItem);
+      });
+    }
+
+    function renderTeacherDashboard() {
+      const studentsList = Object.values(ClassroomStore.students);
+      
+      // Update Metrics
+      document.getElementById('metric-total-students').textContent = studentsList.length;
+      document.getElementById('student-count-badge').textContent = `${studentsList.length}명`;
+
+      let step1 = 0, step2 = 0, step3 = 0, step4 = 0, step5 = 0;
+      studentsList.forEach(s => {
+        if (s.currentStep === 1) step1++;
+        else if (s.currentStep === 2) step2++;
+        else if (s.currentStep === 3) step3++;
+        else if (s.currentStep === 4) step4++;
+        else if (s.currentStep === 5) step5++;
+      });
+
+      document.getElementById('metric-step1-count').textContent = step1;
+      document.getElementById('metric-step2-count').textContent = step2;
+      document.getElementById('metric-step3-count').textContent = step3;
+      document.getElementById('metric-step4-count').textContent = step4;
+      document.getElementById('metric-step5-count').textContent = step5;
+
+      const grid = document.getElementById('teacher-students-grid');
+      const empty = document.getElementById('teacher-empty-state');
+
+      if (studentsList.length === 0) {
+        empty.classList.remove('hidden');
+        grid.innerHTML = '';
+        return;
+      }
+
+      empty.classList.add('hidden');
+      grid.innerHTML = '';
+
+      studentsList.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'bg-slate-50 hover:bg-white p-4 rounded-2xl border border-slate-200 hover:border-indigo-300 shadow-xs hover:shadow-md transition cursor-pointer text-left space-y-3';
+        
+        let stepColor = 'bg-indigo-100 text-indigo-700';
+        if (s.currentStep === 5) stepColor = 'bg-emerald-100 text-emerald-700';
+        else if (s.currentStep === 4) stepColor = 'bg-amber-100 text-amber-700';
+
+        const roleTitle = s.character ? s.character.title : '역할 추첨 전';
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-7 h-7 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
+                ${s.name.charAt(0)}
+              </div>
+              <div>
+                <div class="text-xs font-black text-slate-900">${s.name}</div>
+                <div class="text-[10px] text-slate-400 font-semibold">${s.id}</div>
+              </div>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${stepColor}">
+              ${s.currentStep}단계 진행 중
+            </span>
+          </div>
+          <div class="bg-white p-2 rounded-xl border border-slate-100 text-[11px]">
+            <span class="text-slate-400 font-bold">배정 역할:</span>
+            <span class="text-slate-800 font-semibold ml-1">${roleTitle}</span>
+          </div>
+          <div class="text-[11px] text-slate-500 truncate">
+            ${s.reflection ? `성찰: "${s.reflection}"` : '성찰 작성 대기 중...'}
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          openStudentDetailModal(s);
+        });
+
+        grid.appendChild(card);
+      });
+    }
+
+    function openStudentDetailModal(s) {
+      ClassroomStore.selectedStudentId = s.id;
+      document.getElementById('detail-modal-name').textContent = `${s.name} (${s.id})`;
+      document.getElementById('detail-modal-avatar').textContent = s.name.charAt(0);
+      document.getElementById('detail-modal-time').textContent = `최근 활동: ${new Date(s.lastActive || Date.now()).toLocaleTimeString()}`;
+      document.getElementById('detail-modal-role').textContent = s.character ? `${s.character.title} (${s.character.income})` : '아직 역할을 추첨하지 않았습니다.';
+      
+      const policiesContainer = document.getElementById('detail-modal-policies');
+      policiesContainer.innerHTML = `
+        <div class="p-2 bg-indigo-50/70 rounded-xl border border-indigo-100">
+          <div class="text-[10px] font-bold text-indigo-700">1차 (무지의 베일)</div>
+          <div class="text-[11px] font-semibold text-slate-800 mt-1">조세: ${s.policies1.tax}단계 / 의료: ${s.policies1.health}단계</div>
+          <div class="text-[11px] font-semibold text-slate-800">교육: ${s.policies1.edu}단계 / 안전망: ${s.policies1.safety}단계</div>
+        </div>
+        <div class="p-2 bg-amber-50/70 rounded-xl border border-amber-100">
+          <div class="text-[10px] font-bold text-amber-800">2차 (신분 인지 후)</div>
+          <div class="text-[11px] font-semibold text-slate-800 mt-1">조세: ${s.policies2.tax}단계 / 의료: ${s.policies2.health}단계</div>
+          <div class="text-[11px] font-semibold text-slate-800">교육: ${s.policies2.edu}단계 / 안전망: ${s.policies2.safety}단계</div>
+        </div>
+      `;
+
+      const refBox = document.getElementById('detail-modal-reflection');
+      refBox.textContent = s.reflection || '아직 성찰을 작성하지 않았습니다.';
+
+      document.getElementById('teacher-student-modal').classList.remove('hidden');
+    }
+
+    let customSiteUrl = '';
+
+    function getCleanBaseUrl() {
+      if (customSiteUrl && customSiteUrl.trim().length > 0) {
+        return customSiteUrl.trim();
+      }
+      try {
+        if (window.location.origin && window.location.origin !== 'null') {
+          return `${window.location.origin}${window.location.pathname}`;
+        }
+      } catch (e) {}
+      return window.location.href.split('?')[0];
+    }
+
+    function renderQrCode(targetUrl) {
+      const box = document.getElementById('qrcode-canvas-box');
+      if (!box) return;
+      box.innerHTML = '';
+
+      try {
+        if (typeof QRCode !== 'undefined') {
+          new QRCode(box, {
+            text: targetUrl,
+            width: 180,
+            height: 180,
+            colorDark: '#0f172a',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+          });
+        } else {
+          const fallbackImg = document.createElement('img');
+          fallbackImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(targetUrl)}`;
+          fallbackImg.alt = 'QR Code';
+          fallbackImg.className = 'w-full h-full object-contain';
+          box.appendChild(fallbackImg);
+        }
+      } catch (e) {
+        const fallbackImg = document.createElement('img');
+        fallbackImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(targetUrl)}`;
+        fallbackImg.alt = 'QR Code';
+        box.appendChild(fallbackImg);
+      }
+    }
+
+    function openQrCodeModal() {
+      const modal = document.getElementById('teacher-qr-modal');
+      const codeLabel = document.getElementById('modal-qr-room-code');
+      const urlInput = document.getElementById('input-qr-base-url');
+      const warningBadge = document.getElementById('badge-sandbox-warning');
+
+      if (!modal || !ClassroomStore.roomCode) return;
+
+      codeLabel.textContent = ClassroomStore.roomCode;
+
+      const currentOrigin = window.location.origin || '';
+      const isSandboxOrBlob = currentOrigin.includes('usercontent.goog') || currentOrigin.includes('localhost') || currentOrigin === 'null' || window.location.protocol === 'blob:';
+
+      if (warningBadge) {
+        if (isSandboxOrBlob && !customSiteUrl) warningBadge.classList.remove('hidden');
+        else warningBadge.classList.add('hidden');
+      }
+
+      if (urlInput) {
+        urlInput.value = customSiteUrl || getCleanBaseUrl();
+      }
+
+      const baseUrl = getCleanBaseUrl();
+      const joinUrl = `${baseUrl.includes('?') ? baseUrl + '&' : baseUrl + '?'}room=${ClassroomStore.roomCode}`;
+      renderQrCode(joinUrl);
+
+      modal.classList.remove('hidden');
+    }
+
+    function downloadCurrentHtml() {
+      const htmlContent = document.documentElement.outerHTML;
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'veil_of_ignorance_simulation.html';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('HTML 파일이 다운로드되었습니다. Netlify/Vercel에 올리면 스마트폰 QR 접속이 가능합니다!');
+    }
+
+    function checkUrlForRoomCode() {
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room');
+      if (roomParam && /^\d{4}$/.test(roomParam)) {
+        const modal = document.getElementById('student-join-modal');
+        const codeInput = document.getElementById('input-modal-room-code');
+        if (modal && codeInput) {
+          codeInput.value = roomParam;
+          modal.classList.remove('hidden');
+          showToast(`수업 방(${roomParam}) 코드가 자동 입력되었습니다.`);
+        }
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      // 1. Sliders Input Listeners
+      ['input-tax', 'input-health', 'input-edu', 'input-safety'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updatePolicyLabels1);
+      });
+
+      ['input-tax2', 'input-health2', 'input-edu2', 'input-safety2'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updatePolicyLabels2);
+      });
+
+      // 2. Lobby Mode Triggers
+      document.getElementById('btn-enter-teacher').addEventListener('click', () => {
+        const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
+        ClassroomStore.roomCode = randomCode;
+        ClassroomStore.role = 'teacher';
+
+        document.getElementById('teacher-dashboard-room-code').textContent = randomCode;
+        document.getElementById('room-code-badge').textContent = `방: ${randomCode}`;
+        document.getElementById('role-badge').textContent = '교사';
+        document.getElementById('role-badge').className = 'px-2 py-0.5 rounded-full bg-indigo-700 text-white text-[10px] font-bold';
+
+        showScreen('screen-teacher');
+        initNetwork(randomCode);
+        renderTeacherDashboard();
+        showToast(`수업 방(${randomCode})이 개설되었습니다.`);
+      });
+
+      document.getElementById('btn-enter-student').addEventListener('click', () => {
+        document.getElementById('student-join-modal').classList.remove('hidden');
+      });
+
+      document.getElementById('btn-close-join-modal').addEventListener('click', () => {
+        document.getElementById('student-join-modal').classList.add('hidden');
+      });
+
+      // 3. Student Join Form Validation (5-digit ID & Name Mandatory)
+      document.getElementById('btn-submit-student-join').addEventListener('click', () => {
+        const roomCode = document.getElementById('input-modal-room-code').value.trim();
+        const studentId = document.getElementById('input-modal-student-id').value.trim();
+        const studentName = document.getElementById('input-modal-student-name').value.trim();
+
+        if (!/^\d{4}$/.test(roomCode)) {
+          showToast('수업 코드 4자리를 정확히 입력해 주세요.');
+          return;
+        }
+
+        if (!/^\d{5}$/.test(studentId)) {
+          showToast('학번은 5자리 숫자(예: 10101)로 입력해야 합니다.');
+          return;
+        }
+
+        if (!studentName) {
+          showToast('이름을 입력해 주세요.');
+          return;
+        }
+
+        studentState.id = studentId;
+        studentState.name = studentName;
+        ClassroomStore.roomCode = roomCode;
+        ClassroomStore.role = 'student';
+
+        document.getElementById('student-join-modal').classList.add('hidden');
+        document.getElementById('room-code-badge').textContent = `방: ${roomCode}`;
+        document.getElementById('role-badge').textContent = '학생';
+        document.getElementById('role-badge').className = 'px-2 py-0.5 rounded-full bg-violet-600 text-white text-[10px] font-bold';
+        document.getElementById('student-profile-label').textContent = `학생: ${studentId} ${studentName}`;
+
+        showScreen('screen-student');
+        initNetwork(roomCode);
+        goToStudentStep(1);
+        updatePolicyLabels1();
+        showToast(`${studentName}님, 무지의 베일 수업에 입장했습니다.`);
+      });
+
+      // 4. Return to Lobby
+      document.getElementById('btn-return-lobby').addEventListener('click', () => {
+        if (confirm('로비 메인 화면으로 돌아가시겠습니까?')) {
+          ClassroomStore.role = 'lobby';
+          showScreen('screen-lobby');
+        }
+      });
+
+      document.getElementById('header-logo-btn').addEventListener('click', () => {
+        if (ClassroomStore.role !== 'lobby') {
+          if (confirm('로비 메인 화면으로 돌아가시겠습니까?')) {
+            ClassroomStore.role = 'lobby';
+            showScreen('screen-lobby');
+          }
+        }
+      });
+
+      // 5. Student Flow Steps
+      document.getElementById('btn-submit-step1').addEventListener('click', () => {
+        goToStudentStep(2);
+      });
+
+      document.getElementById('btn-draw-role').addEventListener('click', () => {
+        const randomIndex = Math.floor(Math.random() * CHARACTERS.length);
+        const char = CHARACTERS[randomIndex];
+        studentState.character = char;
+
+        document.getElementById('role-name').textContent = char.title;
+        document.getElementById('role-income').textContent = char.income;
+        document.getElementById('role-badge-tag').textContent = char.tag;
+        document.getElementById('role-desc').textContent = char.desc;
+        document.getElementById('role-asset').textContent = char.asset;
+        document.getElementById('role-health').textContent = char.health;
+        document.getElementById('role-social').textContent = char.social;
+
+        document.getElementById('role-result-card').classList.remove('hidden');
+        document.getElementById('btn-draw-role').parentElement.classList.add('hidden');
+        syncStudentToServer();
+        showToast(`사회적 위치가 '${char.title}'로 배정되었습니다.`);
+      });
+
+      document.getElementById('btn-goto-step3').addEventListener('click', () => {
+        calculateImpact();
+        goToStudentStep(3);
+      });
+
+      document.getElementById('btn-goto-step4').addEventListener('click', () => {
+        // Sync defaults from step 1 into step 2 inputs
+        document.getElementById('input-tax2').value = studentState.policies1.tax;
+        document.getElementById('input-health2').value = studentState.policies1.health;
+        document.getElementById('input-edu2').value = studentState.policies1.edu;
+        document.getElementById('input-safety2').value = studentState.policies1.safety;
+        updatePolicyLabels2();
+        goToStudentStep(4);
+      });
+
+      document.getElementById('btn-submit-step4').addEventListener('click', () => {
+        // Populate Comparison Table in Step 5
+        const p1 = studentState.policies1;
+        const p2 = studentState.policies2;
+
+        document.getElementById('compare-tax-1').textContent = POLICY_DATA.tax[p1.tax - 1].title;
+        document.getElementById('compare-tax-2').textContent = POLICY_DATA.tax[p2.tax - 1].title;
+        document.getElementById('compare-tax-diff').textContent = p1.tax === p2.tax ? '원칙 유지' : (p2.tax > p1.tax ? '복지 강화 ↗' : '자유 확대 ↘');
+
+        document.getElementById('compare-health-1').textContent = POLICY_DATA.health[p1.health - 1].title;
+        document.getElementById('compare-health-2').textContent = POLICY_DATA.health[p2.health - 1].title;
+        document.getElementById('compare-health-diff').textContent = p1.health === p2.health ? '원칙 유지' : (p2.health > p1.health ? '보장 강화 ↗' : '자율 확대 ↘');
+
+        document.getElementById('compare-edu-1').textContent = POLICY_DATA.edu[p1.edu - 1].title;
+        document.getElementById('compare-edu-2').textContent = POLICY_DATA.edu[p2.edu - 1].title;
+        document.getElementById('compare-edu-diff').textContent = p1.edu === p2.edu ? '원칙 유지' : (p2.edu > p1.edu ? '기회 강화 ↗' : '경쟁 확대 ↘');
+
+        document.getElementById('compare-safety-1').textContent = POLICY_DATA.safety[p1.safety - 1].title;
+        document.getElementById('compare-safety-2').textContent = POLICY_DATA.safety[p2.safety - 1].title;
+        document.getElementById('compare-safety-diff').textContent = p1.safety === p2.safety ? '원칙 유지' : (p2.safety > p1.safety ? '안전망 강화 ↗' : '규제 완화 ↘');
+
+        goToStudentStep(5);
+      });
+
+      document.getElementById('btn-save-reflection').addEventListener('click', () => {
+        const text = document.getElementById('input-reflection').value.trim();
+        if (!text) {
+          showToast('성찰 내용을 작성해 주세요.');
+          return;
+        }
+        studentState.reflection = text;
+        syncStudentToServer();
+        showToast('성찰 내용이 선생님 대시보드로 제출되었습니다.');
+      });
+
+      document.getElementById('btn-copy-report').addEventListener('click', () => {
+        const report = `[무지의 베일 시뮬레이션 결과 리포트]
+학생: ${studentState.id} ${studentState.name}
+배정 역할: ${studentState.character ? studentState.character.title : '미배정'}
+1차 설계: 조세(${studentState.policies1.tax}) 의료(${studentState.policies1.health}) 교육(${studentState.policies1.edu}) 안전망(${studentState.policies1.safety})
+2차 재설계: 조세(${studentState.policies2.tax}) 의료(${studentState.policies2.health}) 교육(${studentState.policies2.edu}) 안전망(${studentState.policies2.safety})
+성찰: ${studentState.reflection || '미작성'}`;
+        copyToClipboard(report);
+      });
+
+      // 6. Teacher Modals & Triggers
+      document.getElementById('btn-copy-code-teacher').addEventListener('click', () => {
+        copyToClipboard(ClassroomStore.roomCode);
+      });
+
+      document.getElementById('btn-open-qr-teacher').addEventListener('click', () => {
+        openQrCodeModal();
+      });
+
+      document.getElementById('btn-close-qr-modal').addEventListener('click', () => {
+        document.getElementById('teacher-qr-modal').classList.add('hidden');
+      });
+
+      document.getElementById('btn-close-qr-modal-bottom').addEventListener('click', () => {
+        document.getElementById('teacher-qr-modal').classList.add('hidden');
+      });
+
+      const applyUrlBtn = document.getElementById('btn-apply-custom-url');
+      if (applyUrlBtn) {
+        applyUrlBtn.addEventListener('click', () => {
+          const input = document.getElementById('input-qr-base-url');
+          if (!input || !input.value.trim()) {
+            showToast('유효한 웹사이트 주소를 입력해 주세요.');
+            return;
+          }
+          customSiteUrl = input.value.trim();
+          const fullUrl = `${customSiteUrl.includes('?') ? customSiteUrl + '&' : customSiteUrl + '?'}room=${ClassroomStore.roomCode}`;
+          renderQrCode(fullUrl);
+          const warningBadge = document.getElementById('badge-sandbox-warning');
+          if (warningBadge) warningBadge.classList.add('hidden');
+          showToast('새 주소로 QR 코드가 갱신되었습니다. 이제 스마트폰으로 접속 가능합니다!');
+        });
+      }
+
+      const copyQrBtn = document.getElementById('btn-copy-qr-link');
+      if (copyQrBtn) {
+        copyQrBtn.addEventListener('click', () => {
+          const baseUrl = getCleanBaseUrl();
+          const joinUrl = `${baseUrl.includes('?') ? baseUrl + '&' : baseUrl + '?'}room=${ClassroomStore.roomCode}`;
+          copyToClipboard(joinUrl);
+        });
+      }
+
+      const testNewTabBtn = document.getElementById('btn-test-new-tab');
+      if (testNewTabBtn) {
+        testNewTabBtn.addEventListener('click', () => {
+          const baseUrl = getCleanBaseUrl();
+          const joinUrl = `${baseUrl.includes('?') ? baseUrl + '&' : baseUrl + '?'}room=${ClassroomStore.roomCode}`;
+          window.open(joinUrl, '_blank');
+          showToast('새 창에서 학생 입장 화면을 열었습니다.');
+        });
+      }
+
+      const downloadBtn = document.getElementById('btn-download-html');
+      if (downloadBtn) {
+        downloadBtn.addEventListener('click', downloadCurrentHtml);
+      }
+
+      document.getElementById('btn-close-detail-modal').addEventListener('click', () => {
+        document.getElementById('teacher-student-modal').classList.add('hidden');
+      });
+
+      document.getElementById('btn-praise-1').addEventListener('click', () => {
+        if (!ClassroomStore.selectedStudentId) return;
+        broadcastMessage('TEACHER_FEEDBACK', {
+          studentId: ClassroomStore.selectedStudentId,
+          message: '선생님이 훌륭한 정의론적 탐구에 박수를 보냅니다! 👏'
+        });
+        showToast('칭찬 메시지를 전송했습니다.');
+      });
+
+      document.getElementById('btn-praise-2').addEventListener('click', () => {
+        if (!ClassroomStore.selectedStudentId) return;
+        broadcastMessage('TEACHER_FEEDBACK', {
+          studentId: ClassroomStore.selectedStudentId,
+          message: '자신의 처지와 공공의 정의 사이의 균형을 깊이 있게 성찰해 보세요! 💡'
+        });
+        showToast('성찰 격려 메시지를 전송했습니다.');
+      });
+
+      // 7. Check if page loaded with ?room=XXXX
+      checkUrlForRoomCode();
+    });
+  </script>
+</body>
+</html>
